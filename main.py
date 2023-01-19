@@ -25,6 +25,9 @@ from LS49_pytorch.sim.fdp_plot import george_sherrell
 import os
 import libtbx.load_env
 
+# https://henke.lbl.gov/optical_constants/
+# https://gitlab.com/cctbx/ls49_big_data/-/tree/master/data_sherrell
+
 
 Fe_oxidized_model = george_sherrell(os.path.join(libtbx.env.find_in_repositories("ls49_big_data"),"data_sherrell/pf-rd-ox_fftkk.out")),
 Fe_reduced_model = george_sherrell(os.path.join(libtbx.env.find_in_repositories("ls49_big_data"),"data_sherrell/pf-rd-red_fftkk.out")),
