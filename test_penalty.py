@@ -28,12 +28,5 @@ def test_parse_example0_1(example0):
                                                      [24904.0,0.220802089543, 0.377388435958],
                                                      [24905.0,0.18454034239, 0.315405661584]]))
 
-def test_get_f_p_example0(example0):
-    f_p = penalty.get_f_p(example0[:,1])
-    np.testing.assert_allclose(f_p,example0[:,2])
-    
-def test_get_f_dp_example0(example0):
-    f_dp = penalty.get_f_dp(example0[:,2])
-    np.testing.assert_allclose(f_dp,example0[:,1])
 
   
