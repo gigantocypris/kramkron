@@ -3,10 +3,11 @@
 import sys
 import pathlib
 import numpy as np
+import matplotlib.pyplot as plt
 
 from scipy.signal import hilbert
 from scipy.interpolate import CubicSpline,interp1d
-import matplotlib.pyplot as plt
+from scipy.signal.windows import get_window
 
 INTERP_FUNC = interp1d
                               
@@ -22,45 +23,48 @@ def parse_data(path, remove_first_line=False):
     return(sf)
   
 
-def get_f_dp(f_p):
+def get_f_dp(energy, f_p,
+             padn=5000,
+             Z=26, # atomic number
+             include_Z_term=False,
+             ):
+    
     """Derive f" (f1) from f' (f2) """
-    pass
+    energy,f_dp_pred = get_f_p(energy, -f_p, padn=padn,
+                               Z=Z, # atomic number
+                               include_Z_term=include_Z_term,
+                               )
+    return(energy,f_dp_pred)
 
 
-def fftkk(dF_in, E, switch=1, grain=0.05):
-    """ Code from Sherrell thesis """
-    #Pad out the spectrum by 5000 points
-    k = 5000
-    E_dn = np.arange(E[0] - grain, E[0] - (k+1)*grain, -grain)
-    E_dn = np.fliplr(E_dn.reshape(1, E_dn.shape[0])).reshape(E_dn.shape[0],)
-    E_up = np.arange(E[-1] + grain, E[-1] + (k+1)*grain, grain)
-    _E_ = np.hstack((E_dn, E, E_up))
-    #Take edge of spectrum gently to zero using a quarter of a sine wave
-    range = np.linspace(-np.pi/2, np.pi/2, k)
-    dn = (np.sin(range) / 2) + 0.5
-    up = 1 - dn
-    dF_dn = dF_in[0] * dn
-    dF_up = dF_in[-1] * up
-    _dF_ = np.hstack((dF_dn, dF_in, dF_up))
-    #This is based on fftkk.f by Graham George which
-    #in turn is based on a paper.
-    npts = _E_.shape[0]
-    Hz = np.fft.fft(_dF_)
-    mn = Hz[0]
-    front = Hz[0:(len(Hz)//2)]
-    tmp = front.copy()
-    #I believe the next line is the magic.  Its the convolution with the signum or
-    #how to bypass the difficult integration.
-    tmp.real, tmp.imag = front.imag, front.real
-    front = switch * tmp
-    back = Hz[(len(Hz)//2):]
-    tmp2 = back.copy()
-    tmp2.real, tmp2.imag = back.imag, back.real
-    back = -switch * tmp2
-    new_Hz = np.hstack((mn, front, back))
-    dF = np.fft.ifft(new_Hz).reshape((1, npts))
-    dF_out = np.fliplr(dF).reshape((npts,))
-    return dF_out[k:-k].real
+def fftkk(f_dp, energy, padn=5000):
+    """ Code adapted from Sherrell thesis """
+    denergy = energy[1:]-energy[:-1]
+    dE = energy[1]-energy[0]
+    if np.any(denergy-denergy[0]): # nonuniform spacing
+        uniform_mesh = np.arange(energy[0],energy[-1],dE)
+        interp = INTERP_FUNC(energy, f_dp)
+        F=interp(uniform_mesh) # interpolated f_dp
+        energy=uniform_mesh
+    else:
+        F = f_dp   
+
+    # sin padding as used in Sherrell thesis
+    S = np.sin(np.linspace(-np.pi / 2, np.pi / 2, padn)) * 0.5 + 0.5
+    Fin = np.hstack((F[0] * np.ones_like(S),
+                      F,
+                      F[-1] * np.ones_like((1 - S))))  
+    
+    
+    Hz = np.fft.fft(Fin)
+    H = np.zeros_like(Hz)
+    H[0]=0
+    H[1:(len(H)//2)]=-1
+    H[(len(H)//2):]=1
+    H = H*1j
+   
+    dF = np.fft.ifft(1j*H*Hz+Hz) #.reshape((1, npts))
+    return dF[padn:-padn].imag
 
 def get_f_p(energy, f_dp, padn=5000,
             Z = 26, # atomic number
@@ -77,9 +81,7 @@ def get_f_p(energy, f_dp, padn=5000,
         energy=uniform_mesh
     else:
         F = f_dp   
-    
 
-    
     # sin padding as used in Sherrell thesis
     S = np.sin(np.linspace(-np.pi / 2, np.pi / 2, padn)) * 0.5 + 0.5
     Fin = np.hstack((F[0] * np.ones_like(S),
@@ -100,6 +102,8 @@ def get_f_p(energy, f_dp, padn=5000,
     return(energy,f_p_pred)
 
 
+def create_window(padn):
+    
     
 def penalty(energy, f_p, f_dp, padn=5000, plot=True, start_plot=0,
             end_plot=30000, relativistic_corr=False):
@@ -116,13 +120,16 @@ def penalty(energy, f_p, f_dp, padn=5000, plot=True, start_plot=0,
         plt.figure()
         plt.plot(energy_interp[start_ind:end_ind], f_p_interp[start_ind:end_ind], label='actual')
         plt.plot(energy_interp[start_ind:end_ind], f_p_pred[start_ind:end_ind], label='predicted')
+        if not(relativistic_corr):
+            plt.ylim([-8,3])
         plt.legend()
     mse = np.mean((f_p_interp - f_p_pred)**2)
     return(mse)
     
     
 if __name__ == "__main__":
-    
+    start_plot=7070
+    end_plot=7170
     
     path='sample_data/Fe.nff' # Henke data
     sf = parse_data(path, remove_first_line=True)
@@ -131,7 +138,7 @@ if __name__ == "__main__":
     f_dp = sf[:,2]
 
     mse = penalty(energy, f_p, f_dp, padn=0,
-                  start_plot=4000, end_plot=20000,
+                  start_plot=start_plot, end_plot=end_plot,
                   relativistic_corr=True)
     print(mse)
     
@@ -143,20 +150,32 @@ if __name__ == "__main__":
 
     
     mse = penalty(energy, f_p, f_dp, 
-                  start_plot=4000, end_plot=20000,
+                  start_plot=start_plot, end_plot=end_plot,
                   padn=5000)
     
     print(mse)
     
     path = 'sample_data/pf-rd-ox_fftkk.out'
     sf = parse_data(path)
-    energy = sf[:,0]
-    f_p = sf[:,1]
-    f_dp = sf[:,2]
+    energy = sf[:,0][:-1]
+    f_p = sf[:,1][:-1]
+    f_dp = sf[:,2][:-1]
     
     
     mse = penalty(energy, f_p, f_dp, 
-                  start_plot=4000, end_plot=20000,
+                  start_plot=start_plot, end_plot=end_plot,
                   padn=5000)
 
+
+
     print(mse)
+    
+    f_p_sherrell = fftkk(f_dp, energy,padn=5000)
+    start_ind = np.argmin(np.abs(energy-start_plot))
+    end_ind = np.argmin(np.abs(energy-end_plot))
+    
+    plt.figure()
+    plt.plot(energy[start_ind:end_ind], f_p[start_ind:end_ind], label='actual')
+    plt.plot(energy[start_ind:end_ind], f_p_sherrell[start_ind:end_ind], label='predicted')
+    plt.ylim([-8,3])
+    plt.legend()
