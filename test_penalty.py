@@ -6,27 +6,27 @@ import numpy as np
 
 @pytest.fixture
 def example0():
-    path = 'sample_data/fe.nff'
+    path = 'sample_data/pf-rd-ox_fftkk.out'
     return(penalty.parse_data(path))
 
 @pytest.fixture
 def example1():
-    path = 'sample_data/mn.nff'
+    path = 'sample_data/pf-rd-red_fftkk.out'
     return(penalty.parse_data(path))
   
 def test_parse_example0_0(example0):
     """Test that input is parsed properly."""
-    np.testing.assert_equal(example0[:4], np.array([[10.0000, -9999.00, 1.37852], 
-                                                    [10.1617, -9999.00, 1.42961],
-                                                    [10.3261, -9999.00, 1.48259],
-                                                    [10.4931, -9999.00, 1.53754]]))
+    np.testing.assert_equal(example0[:4], np.array([[1006.0,-1.95442043311, 5.92009170594],
+                                                    [1007.0, -2.81223119888, 8.52503033764],
+                                                    [1008.0, -3.33235759037, 10.1156545543],
+                                                    [1009.0, -3.56113395273, 10.8295300422]]))
     
 def test_parse_example0_1(example0):
     """Test that input is parsed properly."""
-    np.testing.assert_equal(example0[-4:], np.array([[28590.2, 26.2151, 0.333497], 
-                                                     [29052.6, 26.2100, 0.323310],
-                                                     [29522.5, 26.2050, 0.313422],
-                                                     [30000.0, 26.2000, 0.303827]]))
+    np.testing.assert_equal(example0[-4:], np.array([[24902.0,0.244888423888, 0.418575531827],
+                                                     [24903.0,0.237396106135, 0.405759333696],
+                                                     [24904.0,0.220802089543, 0.377388435958],
+                                                     [24905.0,0.18454034239, 0.315405661584]]))
 
 def test_get_f_p_example0(example0):
     f_p = penalty.get_f_p(example0[:,1])
