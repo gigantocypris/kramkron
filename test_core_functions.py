@@ -54,12 +54,12 @@ def test_get_f_p_example0(example0):
     include_Z_term=False
     energy = example0[:,0]
     f_dp = example0[:,2]
-    energy_interp,f_p_pred = core_functions.get_f_p(energy, f_dp, padn=padn,
+    energy_interp,f_p_pred,_,_,_ = core_functions.get_f_p(energy, f_dp, padn=padn,
                                      Z = Z, # atomic number
                                      include_Z_term=include_Z_term,
                                      hilbert_transform_func=core_functions.hilbert_transform)
     
-    energy_interp,f_p_pred_sherrell = core_functions.get_f_p(energy, f_dp, padn=padn,
+    energy_interp,f_p_pred_sherrell,_,_,_ = core_functions.get_f_p(energy, f_dp, padn=padn,
                                               Z = Z, # atomic number
                                               include_Z_term=include_Z_term,
                                               hilbert_transform_func=core_functions.hilbert_transform_sherrell)
@@ -75,9 +75,7 @@ def test_get_f_p_get_f_dp_example0(example0):
     energy = example0[:,0]
     f_dp = example0[:,2]
     
-    
-    
-    energy_interp,f_p_pred = core_functions.get_f_p(energy, f_dp, padn=padn,
+    energy_interp,f_p_pred, energy_interp_pad, f_p_pred_pad, f_dp_pad = core_functions.get_f_p(energy, f_dp, padn=padn,
                                      Z = Z, # atomic number
                                      include_Z_term=include_Z_term,
                                      hilbert_transform_func=core_functions.hilbert_transform)
@@ -85,11 +83,21 @@ def test_get_f_p_get_f_dp_example0(example0):
     
     f_dp_interp = core_functions.INTERP_FUNC(energy, f_dp)(energy_interp)
     
-    energy_interp,f_dp_pred = core_functions.get_f_dp(energy_interp, f_p_pred, padn=padn,
+    energy_interp_pad,f_dp_pred,_,_ = core_functions.get_f_dp(energy_interp_pad, f_p_pred_pad, padn=0,
                                                       Z = Z, # atomic number
                                                       include_Z_term=include_Z_term,
                                                       hilbert_transform_func=core_functions.hilbert_transform)
-    np.testing.assert_allclose(f_dp_interp[-crop:crop], f_dp_pred[-crop:crop])
+
+    
+    # add back DC term
+    F_dp_pred = np.fft.fft(f_dp_pred)
+    F_dp_pred[0] = np.fft.fft(f_dp_pad)[0]
+    f_dp_pred = np.fft.ifft(F_dp_pred).real
+    
+    if padn != 0:
+        f_dp_pred = f_dp_pred[padn:-padn]
+
+    np.testing.assert_allclose(f_dp_interp[crop:-crop], f_dp_pred[crop:-crop], atol=1e-4, rtol=1e-4)
 
 def test_penalty_example0(example0):
     """Test that finding f_p and then calculating the penalty yields 0 penalty"""
@@ -99,20 +107,19 @@ def test_penalty_example0(example0):
     energy = example0[:,0]
     f_dp = example0[:,2]
     
+    energy_interp,f_p_pred,energy_interp_pad,f_p_pred_pad,f_dp_pad = core_functions.get_f_p(energy, f_dp, padn=padn,
+                                                                            Z = Z, # atomic number
+                                                                            include_Z_term=include_Z_term,
+                                                                            hilbert_transform_func=core_functions.hilbert_transform)
     
     
-    energy_interp,f_p_pred = core_functions.get_f_p(energy, f_dp, padn=padn,
-                                     Z = Z, # atomic number
-                                     include_Z_term=include_Z_term,
-                                     hilbert_transform_func=core_functions.hilbert_transform)
+    # f_dp_interp = core_functions.INTERP_FUNC(energy, f_dp)(energy_interp)
     
-    
-    f_dp_interp = core_functions.INTERP_FUNC(energy, f_dp)(energy_interp)
-    
-    mse,_,_,_ = core_functions.penalty(energy_interp, f_p_pred, f_dp_interp, 
-                                       padn=padn, Z=Z, include_Z_term=include_Z_term,
-                                       hilbert_transform_func=core_functions.hilbert_transform)
-    np.testing.assert_allclose(mse, 0)
+    mse = core_functions.penalty(energy_interp_pad, f_p_pred_pad, 
+                                 f_dp_pad, 
+                                 padn=0, trim=0, Z=Z, include_Z_term=include_Z_term,
+                                 hilbert_transform_func=core_functions.hilbert_transform)
+    np.testing.assert_allclose(0,mse,atol=1e-8, rtol=1e-8)
     
 def test_get_f_p_get_f_dp_example2(example2):
     """Test that finding f_p and then finding f_dp yields the input f_dp."""
@@ -124,40 +131,77 @@ def test_get_f_p_get_f_dp_example2(example2):
     f_dp = example2[:,2]
     
     
-    
-    energy_interp,f_p_pred = core_functions.get_f_p(energy, f_dp, padn=padn,
-                                     Z = Z, # atomic number
-                                     include_Z_term=include_Z_term,
-                                     hilbert_transform_func=core_functions.hilbert_transform)
+    energy_interp,f_p_pred, energy_interp_pad, f_p_pred_pad, f_dp_pad = core_functions.get_f_p(energy, f_dp, padn=padn,
+                                                                                               Z = Z, # atomic number
+                                                                                               include_Z_term=include_Z_term,
+                                                                                               hilbert_transform_func=core_functions.hilbert_transform)
     
     
     f_dp_interp = core_functions.INTERP_FUNC(energy, f_dp)(energy_interp)
     
-    energy_interp,f_dp_pred = core_functions.get_f_dp(energy_interp, f_p_pred, padn=padn,
-                                                      Z = Z, # atomic number
-                                                      include_Z_term=include_Z_term,
-                                                      hilbert_transform_func=core_functions.hilbert_transform)
-    np.testing.assert_allclose(f_dp_interp[-crop:crop], f_dp_pred[-crop:crop])
+
+    
+    energy_interp_pad,f_dp_pred,_,_ = core_functions.get_f_dp(energy_interp_pad, f_p_pred_pad, padn=0,
+                                                              Z = Z, # atomic number
+                                                              include_Z_term=include_Z_term,
+                                                              hilbert_transform_func=core_functions.hilbert_transform)
+
+    
+    # add back DC term
+    F_dp_pred = np.fft.fft(f_dp_pred)
+    F_dp_pred[0] = np.fft.fft(f_dp_pad)[0]
+    f_dp_pred = np.fft.ifft(F_dp_pred).real
+    
+    if padn != 0:
+        f_dp_pred = f_dp_pred[padn:-padn]
+    np.testing.assert_allclose(f_dp_interp[crop:-crop], f_dp_pred[crop:-crop], atol=1e-4, rtol=1e-4)
 
 def test_penalty_example2(example2):
     """Test that finding f_p and then calculating the penalty yields 0 penalty"""
+
     padn=5000
     Z=26
     include_Z_term=False
     energy = example2[:,0]
     f_dp = example2[:,2]
     
+    energy_interp,f_p_pred,energy_interp_pad,f_p_pred_pad,f_dp_pad = core_functions.get_f_p(energy, f_dp, padn=padn,
+                                                                            Z = Z, # atomic number
+                                                                            include_Z_term=include_Z_term,
+                                                                            hilbert_transform_func=core_functions.hilbert_transform)
     
     
-    energy_interp,f_p_pred = core_functions.get_f_p(energy, f_dp, padn=padn,
-                                     Z = Z, # atomic number
-                                     include_Z_term=include_Z_term,
-                                     hilbert_transform_func=core_functions.hilbert_transform)
+    # f_dp_interp = core_functions.INTERP_FUNC(energy, f_dp)(energy_interp)
     
+    mse = core_functions.penalty(energy_interp_pad, f_p_pred_pad, 
+                                 f_dp_pad, 
+                                 padn=0, trim=0, Z=Z, include_Z_term=include_Z_term,
+                                 hilbert_transform_func=core_functions.hilbert_transform)
+    np.testing.assert_allclose(0,mse,atol=1e-8, rtol=1e-8)
     
-    f_dp_interp = core_functions.INTERP_FUNC(energy, f_dp)(energy_interp)
+def test_cos_wave():
+    """Test that finding f_p when f_dp is cos(energy) yields sin(energy)"""
+    energy = np.arange(-np.pi,np.pi,.001)
     
-    mse,_,_,_ = core_functions.penalty(energy_interp, f_p_pred, f_dp_interp, 
-                                       padn=padn, Z=Z, include_Z_term=include_Z_term,
-                                       hilbert_transform_func=core_functions.hilbert_transform)
-    np.testing.assert_allclose(mse, 0, atol=1e-7)
+    u = np.cos(energy)
+    h_u = np.sin(energy)
+    
+    energy_interp,f_p_pred,_,_,_ = core_functions.get_f_p(energy, u, padn=0,
+                                                    trim=0,
+                                                    Z = 26, # atomic number
+                                                    include_Z_term=False,
+                                                    hilbert_transform_func=core_functions.hilbert_transform,
+                                                    window_type='cosine',
+                                                    )
+    np.testing.assert_allclose(h_u, f_p_pred, rtol=1e-3, atol=1e-3)
+
+def test_filter_out_dc():
+    """Test filtering out the DC component"""
+    energy = np.arange(-np.pi,np.pi,.001)
+    
+    u = np.cos(energy)
+    u_dc = u+1
+    u_filtered = core_functions.filter_out_dc(u_dc)
+    
+
+    np.testing.assert_allclose(u_filtered, u, rtol=1e-3, atol=1e-3)

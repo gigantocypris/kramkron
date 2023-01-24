@@ -39,6 +39,7 @@ def hilbert_transform_sherrell(f_dp):
 
 
 def get_f_p(energy, f_dp, padn=5000,
+            trim=0,
             Z = 26, # atomic number
             include_Z_term=False,
             hilbert_transform_func=hilbert_transform,
@@ -57,22 +58,29 @@ def get_f_p(energy, f_dp, padn=5000,
         f_in = f_dp 
         energy_interp=energy
 
-    f_in = apply_window(f_in, padn, window_type=window_type)
+    f_in = apply_window(f_in, padn, trim=trim, window_type=window_type)
     
-    f_p_pred = hilbert_transform_func(f_in)
+    f_p_pred_padded = hilbert_transform_func(f_in)
     
     if padn != 0:
-        f_p_pred = f_p_pred[padn:-padn]
+        f_p_pred = f_p_pred_padded[padn:-padn]
+        start_energy = energy_interp[0]-padn*dE
+        end_energy = energy_interp[-1]+(padn+1)*dE
+        energy_interp_padded = np.arange(start_energy,end_energy,dE)
+    else:
+        f_p_pred = f_p_pred_padded
+        energy_interp_padded = energy_interp
     
     if include_Z_term:
         Z_star = Z - (Z/82.5)**2.37
         f_p_pred = Z_star + f_p_pred
     
-    return(energy_interp,f_p_pred)
+    return(energy_interp, f_p_pred, energy_interp_padded, f_p_pred_padded,f_in)
 
 
 def get_f_dp(energy, f_p,
              padn=5000,
+             trim=0,
              Z=26, # atomic number
              include_Z_term=False,
              hilbert_transform_func=hilbert_transform,
@@ -80,16 +88,18 @@ def get_f_dp(energy, f_p,
              ):
     
     """Derive f" from f' """
-    energy_interp,f_dp_pred = get_f_p(energy, -f_p, padn=padn,
-                                      Z=Z, # atomic number
-                                      include_Z_term=include_Z_term,
-                                      hilbert_transform_func=hilbert_transform_func,
-                                      window_type=window_type,
-                                      )
-    return(energy_interp,f_dp_pred)
+    energy_interp,f_dp_pred, energy_interp_padded, f_dp_pred_padded,_ = get_f_p(energy, -f_p, padn=padn,
+                                                        trim=trim,
+                                                        Z=Z, # atomic number
+                                                        include_Z_term=include_Z_term,
+                                                        hilbert_transform_func=hilbert_transform_func,
+                                                        window_type=window_type,
+                                                        )
+    return(energy_interp,f_dp_pred, energy_interp_padded, f_dp_pred_padded)
 
 
 def apply_window(f_in, padn,
+                 trim=0,
                  window_type='cosine'):
     """
     Possible window_type:
@@ -97,32 +107,118 @@ def apply_window(f_in, padn,
     blackman, harris, nuttall, barthann, cosine, exponential, tukey, taylor,
     lanczos
     """
-    
-    window = get_window(window_type,padn*2)
-    window = window[0:padn]
+
+    window = get_window(window_type,(padn+trim)*2)
+    window = window[0:padn+trim]
     window = np.expand_dims(window, 0)
 
-    windowed_func = np.hstack((f_in[0] * np.squeeze(window),
-                               f_in,
-                               f_in[-1] * np.squeeze(np.fliplr(window))))
+    
+    window_start = f_in[0]*np.ones(padn+trim)
+    window_start[padn:]=f_in[0:trim]
+    
+    window_end = f_in[-1]*np.ones(padn+trim)
+    window_end[0:trim]=f_in[len(f_in)-trim:]
+    
+    windowed_func = np.hstack((window_start * np.squeeze(window),
+                               f_in[trim:len(f_in)-trim],
+                               window_end * np.squeeze(np.fliplr(window))))
+
     return(windowed_func) 
     
     
     
-def penalty(energy, f_p, f_dp, padn=5000, Z=26, include_Z_term=False,
+def penalty(energy, f_p, f_dp, trim=0, padn=5000, Z=26, include_Z_term=False,
             hilbert_transform_func=hilbert_transform,
             window_type='cosine'):
     """How close f' and f" are to obeying the Kramers Kronig relation?"""
-    energy_interp,f_p_pred = get_f_p(energy, f_dp, padn=padn,
-                                     Z = Z, # atomic number
-                                     include_Z_term=include_Z_term,
-                                     hilbert_transform_func=hilbert_transform_func,
-                                     window_type=window_type)
+    
+    """Going from f_dp to f_p"""
+    energy_interp,f_p_pred,_,f_p_pred_pad,_ = get_f_p(energy, f_dp, trim=trim, padn=padn,
+                                        Z = Z, # atomic number
+                                        include_Z_term=include_Z_term,
+                                        hilbert_transform_func=hilbert_transform_func,
+                                        window_type=window_type)
+    
+    # add back DC term
+    F_p_pred = np.fft.fft(f_p_pred_pad)
+    F_p_pred[0] = np.fft.fft(f_p)[0]
+    f_p_pred_pad = np.fft.ifft(F_p_pred).real
+    
+    f_p_pred_pad = f_p_pred_pad[padn:len(f_p_pred_pad)-padn]
+    f_p_pred = f_p_pred_pad[trim:len(f_p_pred_pad)-trim]
     
     # interpolation in case of nonuniform energy
-    f_p_interp = INTERP_FUNC(energy, f_p)(energy_interp)
+    f_p_interp = INTERP_FUNC(energy, f_p)(energy_interp)[trim:len(energy_interp)-trim]
     
-    mse = np.mean((f_p_interp - f_p_pred)**2)
-    return(mse,energy_interp,f_p_pred,f_p_interp)
 
     
+    """Going from f_p to f_dp"""
+    energy_interp,f_dp_pred,_,f_dp_pred_pad = get_f_dp(energy, f_p, trim=trim, padn=padn,
+                                          Z = Z, # atomic number
+                                          include_Z_term=include_Z_term,
+                                          hilbert_transform_func=hilbert_transform_func,
+                                          window_type=window_type)
+    
+    # add back DC term
+    F_dp_pred = np.fft.fft(f_dp_pred_pad)
+    F_dp_pred[0] = np.fft.fft(f_dp)[0]
+    f_dp_pred_pad = np.fft.ifft(F_dp_pred).real
+    
+    f_dp_pred_pad = f_dp_pred_pad[padn:len(f_dp_pred_pad)-padn]
+    f_dp_pred = f_dp_pred_pad[trim:len(f_dp_pred_pad)-trim]
+    
+    # interpolation in case of nonuniform energy
+    f_dp_interp = INTERP_FUNC(energy, f_dp)(energy_interp)[trim:len(energy_interp)-trim]
+
+    mse = np.mean((f_p_interp - f_p_pred)**2) + np.mean((f_dp_interp - f_dp_pred)**2)
+    return(mse)
+
+
+def filter_out_dc(f_dp):
+    # filter out DC term
+    F_dp = np.fft.fft(f_dp)
+    F_dp[0] = 0
+    f_dp = np.fft.ifft(F_dp).real
+    return(f_dp)
+
+if __name__ == "__main__":
+    width = 100
+    dE = .001
+    w=np.pi/width
+    energy = np.arange(-width,width,dE)
+    trim=0
+    # periodic rectangle function
+    u = np.heaviside(energy, 1.0)
+    
+    # #filter above Nyquist frequency
+    # N_f = 1/(2*dE)
+    # U = np.fft.fftshift(np.fft.fft(u))
+    # freq_spacing = np.arange(-1/(2*dE),1/(2*dE),1/(2*width))
+    # filter_Nf = np.zeros_like(U)
+    # filter_Nf[np.abs(freq_spacing)<N_f]=1
+    # u = np.fft.ifftshift(U*filter_Nf)
+    
+    # h_u = -(1/np.pi)*np.log(1/np.abs(energy))
+    h_u_periodic = (2/np.pi)*np.log(np.abs(np.tan(w*energy/2)))
+    
+    energy_interp,f_p_pred,_,_,_ = \
+    get_f_p(energy, u, padn=0,
+             trim=0,
+             Z = 26, # atomic number
+             include_Z_term=False,
+             hilbert_transform_func=hilbert_transform,
+             window_type='cosine',
+             )
+    
+    import matplotlib.pyplot as plt
+    
+    # plt.figure()
+    # plt.plot(energy,u)
+
+    # plt.figure()
+    # plt.plot(energy,h_u)
+    # plt.plot(energy_interp,f_p_pred)
+
+    plt.figure() # match is not perfect because u(t) is discrete
+    plt.plot(energy,h_u_periodic)
+    plt.plot(energy_interp,f_p_pred)
