@@ -31,11 +31,11 @@ if __name__ == "__main__":
     path='sample_data/Fe.nff' # Henke data
     sf = core_functions.parse_data(path, remove_first_line=True)
     ind_0 = 100
-    energy = sf[:,0][ind_0:]
-    f_p = sf[:,1][ind_0:]
-    f_dp = sf[:,2][ind_0:]
-
-    energy_interp,f_p_pred,_,_,f_in = core_functions.get_f_p(energy, f_dp, padn=5000,
+    energy_Fe = sf[:,0][ind_0:]
+    f_p_Fe = sf[:,1][ind_0:]
+    f_dp_Fe = sf[:,2][ind_0:]
+    
+    energy_interp,f_p_pred,_,_,f_in = core_functions.get_f_p(energy_Fe, f_dp_Fe, padn=5000,
                                                           trim=24500,
                                                           Z = 26, # atomic number
                                                           include_Z_term=True,
@@ -45,15 +45,15 @@ if __name__ == "__main__":
     start_eV = 500
     end_eV = 25000
     
-    start_ind,end_ind = get_inds(energy, start_eV, end_eV)
-    start_ind_interp,end_ind_interp = get_inds(energy_interp, energy[start_ind], energy[end_ind])
+    start_ind,end_ind = get_inds(energy_Fe, start_eV, end_eV)
+    start_ind_interp,end_ind_interp = get_inds(energy_interp, energy_Fe[start_ind], energy_Fe[end_ind])
 
     plt.figure()
-    plt.plot(energy[start_ind:end_ind],f_dp[start_ind:end_ind],linewidth=2,label='Table Value')
+    plt.plot(energy_Fe[start_ind:end_ind],f_dp_Fe[start_ind:end_ind],linewidth=2,label='Table Value')
     plt.savefig('plots/henke_f_dp.png',dpi=300, pad_inches=0.0)
     
     plt.figure()
-    plt.plot(energy[start_ind:end_ind],f_p[start_ind:end_ind],linewidth=2,label='Table Value')
+    plt.plot(energy_Fe[start_ind:end_ind],f_p_Fe[start_ind:end_ind],linewidth=2,label='Table Value')
     plt.plot(energy_interp[start_ind_interp:end_ind_interp],
              f_p_pred[start_ind_interp:end_ind_interp],linewidth=2, label='Computed from Kramers Kronig')
     plt.legend()
@@ -70,9 +70,11 @@ if __name__ == "__main__":
     sf_fe_0 = core_functions.parse_data(path, remove_first_line=False)
     start_ind_fe_0, end_ind_fe_0 = get_inds(sf_fe_0[:,0], start_eV, end_eV)
 
+    
     path='sample_data/pf-rd-red_fftkk.out'
     sf_fe_2 = core_functions.parse_data(path)
     start_ind_fe_2, end_ind_fe_2 = get_inds(sf_fe_2[:,0], start_eV, end_eV)
+
 
     path = 'sample_data/pf-rd-ox_fftkk.out'
     sf_fe_3 = core_functions.parse_data(path)
@@ -99,25 +101,51 @@ if __name__ == "__main__":
 
     padn = 5000
     window_type = 'cosine'
+    trim = 6000
     
-    energy_interp_0,f_p_pred_0,_,_,_ = core_functions.get_f_p(sf_fe_0[:,0],sf_fe_0[:,2], padn=padn,
-                                                              Z = 26, # atomic number
+    path='sample_data/Fe.dat' 
+    sf = core_functions.parse_data(path, remove_first_line=False)
+                   
+    known_response_energy=sf[:,0]
+    known_response_f_p=sf[:,1]
+    known_response_f_dp=sf[:,2]
+                                               
+    energy_interp_0,f_p_pred_0,_,_,_ = core_functions.get_f_p(sf_fe_0[:,0],sf_fe_0[:,2], 
+                                                              trim=trim,
+                                                              padn=padn,
+                                                              Z=26, # atomic number
                                                               include_Z_term=False,
                                                               window_type=window_type,
+                                                              known_response_energy=known_response_energy,
+                                                              known_response_f_p=known_response_f_p,
+                                                              known_response_f_dp=known_response_f_dp,
                                                               )
     start_ind_fe_interp_0, end_ind_fe_interp_0 = get_inds(energy_interp_0, start_eV, end_eV)
 
-    energy_interp_2,f_p_pred_2,_,_,_ = core_functions.get_f_p(sf_fe_2[:,0],sf_fe_2[:,2], padn=padn,
+    
+    energy_interp_2,f_p_pred_2,_,_,_ = core_functions.get_f_p(sf_fe_2[:,0],sf_fe_2[:,2], 
+                                                              trim=trim,
+                                                              padn=padn,
                                                               Z = 26, # atomic number
                                                               include_Z_term=False,
                                                               window_type=window_type,
+                                                              known_response_energy=known_response_energy,
+                                                              known_response_f_p=known_response_f_p,
+                                                              known_response_f_dp=known_response_f_dp,
                                                               )
+    
+    
     start_ind_fe_interp_2, end_ind_fe_interp_2 = get_inds(energy_interp_2, start_eV, end_eV)
     
-    energy_interp_3,f_p_pred_3,_,_,_ = core_functions.get_f_p(sf_fe_3[:,0],sf_fe_3[:,2], padn=padn,
+    energy_interp_3,f_p_pred_3,_,_,_ = core_functions.get_f_p(sf_fe_3[:,0],sf_fe_3[:,2], 
+                                                              trim=trim,
+                                                              padn=padn,
                                                               Z = 26, # atomic number
                                                               include_Z_term=False,
                                                               window_type=window_type,
+                                                              known_response_energy=known_response_energy,
+                                                              known_response_f_p=known_response_f_p,
+                                                              known_response_f_dp=known_response_f_dp,
                                                               )
     start_ind_fe_interp_3, end_ind_fe_interp_3 = get_inds(energy_interp_3, start_eV, end_eV)
     
@@ -129,7 +157,7 @@ if __name__ == "__main__":
     plt.plot(energy_interp_0[start_ind_fe_interp_0:end_ind_fe_interp_0],f_p_pred_0[start_ind_fe_interp_0:end_ind_fe_interp_0],'m--', label="Fe0 calculated")
     plt.plot(energy_interp_2[start_ind_fe_interp_2:end_ind_fe_interp_2],f_p_pred_2[start_ind_fe_interp_2:end_ind_fe_interp_2],'r--', label="Fe2+ calculated")
     plt.plot(energy_interp_3[start_ind_fe_interp_3:end_ind_fe_interp_3],f_p_pred_3[start_ind_fe_interp_3:end_ind_fe_interp_3],'b--', label="Fe3+ calculated")
-    plt.ylim([-8.5, -2.5])
+    # plt.ylim([-8.5, -2.5])
     plt.legend()
     plt.savefig('plots/sherrell_f_p_overlaid.png',dpi=300, pad_inches=0.0)
     
@@ -151,10 +179,15 @@ if __name__ == "__main__":
     plt.figure()
     
     for padn in padn_vec:
-        energy_interp,f_p_pred,_,_,_ = core_functions.get_f_p(energy,f_dp, padn=padn,
+        energy_interp,f_p_pred,_,_,_ = core_functions.get_f_p(energy,f_dp, 
+                                                              trim=0,
+                                                              padn=padn,
                                                               Z = 26, # atomic number
                                                               include_Z_term=False,
                                                               window_type='cosine',
+                                                              known_response_energy=known_response_energy,
+                                                              known_response_f_p=known_response_f_p,
+                                                              known_response_f_dp=known_response_f_dp,
                                                               )
         plt.plot(energy_interp,f_p_pred,label=str(padn))
         
@@ -171,10 +204,15 @@ if __name__ == "__main__":
     plt.figure()
     
     for window_type in window_vec:
-        energy_interp,f_p_pred,_,_,_ = core_functions.get_f_p(energy,f_dp, padn=5000,
+        energy_interp,f_p_pred,_,_,_ = core_functions.get_f_p(energy,f_dp,
+                                                              trim=0,
+                                                              padn=5000,
                                                               Z = 26, # atomic number
                                                               include_Z_term=False,
                                                               window_type=window_type,
+                                                              known_response_energy=known_response_energy,
+                                                              known_response_f_p=known_response_f_p,
+                                                              known_response_f_dp=known_response_f_dp,
                                                               )
         plt.plot(energy_interp,f_p_pred,label=window_type)
         

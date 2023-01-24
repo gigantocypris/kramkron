@@ -7,9 +7,9 @@ from scipy.signal import hilbert
 from scipy.interpolate import CubicSpline,interp1d
 from scipy.signal.windows import get_window
 
-INTERP_FUNC = interp1d
-          
-                    
+INTERP_FUNC = lambda x,y: interp1d(x,y,fill_value="extrapolate")
+
+
 def parse_data(path, remove_first_line=False):
     """Load and parse input."""
     data_input=pathlib.Path(path).read_text().rstrip()
@@ -44,6 +44,9 @@ def get_f_p(energy, f_dp, padn=5000,
             include_Z_term=False,
             hilbert_transform_func=hilbert_transform,
             window_type='cosine',
+            known_response_energy=None,
+            known_response_f_p=None,
+            known_response_f_dp=None,
             ):
     """Derive f' from f" """
     
@@ -58,6 +61,15 @@ def get_f_p(energy, f_dp, padn=5000,
         f_in = f_dp 
         energy_interp=energy
 
+    if known_response_energy is not None:
+        known_response_f_p_interp = INTERP_FUNC(known_response_energy, known_response_f_p)(energy_interp)
+        known_response_f_dp_interp = INTERP_FUNC(known_response_energy, known_response_f_dp)(energy_interp)
+    else:
+        known_response_f_p_interp = np.zeros_like(f_in)
+        known_response_f_dp_interp = np.zeros_like(f_in)
+    
+    f_in = f_in - known_response_f_dp_interp
+        
     f_in = apply_window(f_in, padn, trim=trim, window_type=window_type)
     
     f_p_pred_padded = hilbert_transform_func(f_in)
@@ -75,6 +87,7 @@ def get_f_p(energy, f_dp, padn=5000,
         Z_star = Z - (Z/82.5)**2.37
         f_p_pred = Z_star + f_p_pred
     
+    f_p_pred = f_p_pred + known_response_f_p_interp
     return(energy_interp, f_p_pred, energy_interp_padded, f_p_pred_padded,f_in)
 
 
@@ -85,16 +98,26 @@ def get_f_dp(energy, f_p,
              include_Z_term=False,
              hilbert_transform_func=hilbert_transform,
              window_type='cosine',
+             known_response_energy=None,
+             known_response_f_p=None,
+             known_response_f_dp=None,
              ):
     
     """Derive f" from f' """
+    
+    if known_response_f_p is not None:
+        known_response_f_p = -known_response_f_p
+        
     energy_interp,f_dp_pred, energy_interp_padded, f_dp_pred_padded,_ = get_f_p(energy, -f_p, padn=padn,
-                                                        trim=trim,
-                                                        Z=Z, # atomic number
-                                                        include_Z_term=include_Z_term,
-                                                        hilbert_transform_func=hilbert_transform_func,
-                                                        window_type=window_type,
-                                                        )
+                                                                                trim=trim,
+                                                                                Z=Z, # atomic number
+                                                                                include_Z_term=include_Z_term,
+                                                                                hilbert_transform_func=hilbert_transform_func,
+                                                                                window_type=window_type,
+                                                                                known_response_energy=known_response_energy,
+                                                                                known_response_f_p=known_response_f_dp,
+                                                                                known_response_f_dp=known_response_f_p,
+                                                                                )
     return(energy_interp,f_dp_pred, energy_interp_padded, f_dp_pred_padded)
 
 
@@ -128,16 +151,23 @@ def apply_window(f_in, padn,
     
     
 def penalty(energy, f_p, f_dp, trim=0, padn=5000, Z=26, include_Z_term=False,
-            hilbert_transform_func=hilbert_transform,
-            window_type='cosine'):
+            hilbert_transform_func=hilbert_transform,window_type='cosine',
+            known_response_energy=None,
+            known_response_f_p=None,
+            known_response_f_dp=None,
+            ):
     """How close f' and f" are to obeying the Kramers Kronig relation?"""
     
     """Going from f_dp to f_p"""
     energy_interp,f_p_pred,_,f_p_pred_pad,_ = get_f_p(energy, f_dp, trim=trim, padn=padn,
-                                        Z = Z, # atomic number
-                                        include_Z_term=include_Z_term,
-                                        hilbert_transform_func=hilbert_transform_func,
-                                        window_type=window_type)
+                                                      Z = Z, # atomic number
+                                                      include_Z_term=include_Z_term,
+                                                      hilbert_transform_func=hilbert_transform_func,
+                                                      window_type=window_type,
+                                                      known_response_energy=known_response_energy,
+                                                      known_response_f_p=known_response_f_p,
+                                                      known_response_f_dp=known_response_f_dp,
+                                                      )
     
     # add back DC term
     F_p_pred = np.fft.fft(f_p_pred_pad)
@@ -154,10 +184,13 @@ def penalty(energy, f_p, f_dp, trim=0, padn=5000, Z=26, include_Z_term=False,
     
     """Going from f_p to f_dp"""
     energy_interp,f_dp_pred,_,f_dp_pred_pad = get_f_dp(energy, f_p, trim=trim, padn=padn,
-                                          Z = Z, # atomic number
-                                          include_Z_term=include_Z_term,
-                                          hilbert_transform_func=hilbert_transform_func,
-                                          window_type=window_type)
+                                                       Z = Z, # atomic number
+                                                       include_Z_term=include_Z_term,
+                                                       hilbert_transform_func=hilbert_transform_func,
+                                                       window_type=window_type,
+                                                       known_response_energy=known_response_energy,
+                                                       known_response_f_p=known_response_f_p,
+                                                       known_response_f_dp=known_response_f_dp,)
     
     # add back DC term
     F_dp_pred = np.fft.fft(f_dp_pred_pad)

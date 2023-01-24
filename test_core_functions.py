@@ -205,3 +205,69 @@ def test_filter_out_dc():
     
 
     np.testing.assert_allclose(u_filtered, u, rtol=1e-3, atol=1e-3)
+    
+def test_get_f_p_cos_wave(example0):
+    """Test that finding f_p with an added cos wave is same as subtracting the cos wave, 
+    transforming, and adding the known response"""
+    
+    padn=0
+    energy = example0[:,0]
+    f_dp = example0[:,2]
+    
+    T = energy[-1]-energy[0]
+    w = 2*np.pi/T
+    u = np.cos(w*energy)
+    h_u = np.sin(w*energy)
+    
+    energy_interp,f_p_pred_subtract, \
+    energy_interp_pad, f_p_pred_pad, \
+    f_dp_pad = core_functions.get_f_p(energy, f_dp+u, padn=padn,
+                                      hilbert_transform_func=core_functions.hilbert_transform,
+                                      known_response_energy=energy,
+                                      known_response_f_p=h_u,
+                                      known_response_f_dp=u,
+                                      )
+    
+
+    energy_interp,f_p_pred, \
+    energy_interp_pad, f_p_pred_pad, \
+    f_dp_pad = core_functions.get_f_p(energy, f_dp+u, padn=padn,
+                                      hilbert_transform_func=core_functions.hilbert_transform,
+                                      known_response_energy=None,
+                                      known_response_f_p=None,
+                                      known_response_f_dp=None,
+                                      )    
+
+    np.testing.assert_allclose(f_p_pred_subtract, f_p_pred, rtol=1e-4, atol=1e-4)
+
+def test_get_f_dp_cos_wave(example0):
+    """Test that finding f_dp with an added cos wave is same as subtracting the cos wave, 
+    transforming, and adding the known response"""
+    
+    padn=0
+    energy = example0[:,0]
+    f_p = example0[:,1]
+    
+    T = energy[-1]-energy[0]
+    w = 2*np.pi/T
+    u = np.cos(w*energy)
+    h_u = np.sin(w*energy)
+    
+    energy_interp,f_dp_pred_subtract, \
+    energy_interp_pad, f_dp_pred_pad = core_functions.get_f_dp(energy, f_p+h_u, padn=padn,
+                                                               hilbert_transform_func=core_functions.hilbert_transform,
+                                                               known_response_energy=energy,
+                                                               known_response_f_p=h_u,
+                                                               known_response_f_dp=u,
+                                                               )
+    
+
+    energy_interp,f_dp_pred, \
+    energy_interp_pad, f_dp_pred_pad = core_functions.get_f_dp(energy, f_p+h_u, padn=padn,
+                                                               hilbert_transform_func=core_functions.hilbert_transform,
+                                                               known_response_energy=None,
+                                                               known_response_f_p=None,
+                                                               known_response_f_dp=None,
+                                                               )    
+
+    np.testing.assert_allclose(f_dp_pred_subtract, f_dp_pred, rtol=1e-3, atol=1e-3)
