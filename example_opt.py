@@ -1,12 +1,13 @@
 """
-A great approach would be to work out a unit test first, then actually implement the code.
-The test would simulate f″ based on a very simple model of the K-edge.
+Example use of kramkron API
+The test would simulate f" based on a very simple model of the K-edge.
 Then use the dispersion relations to calculate f′.
 Then sample both of these curves with Gaussian noise to simulate experimental measurement of the two curves.
 Then develop a restraint model, and optimize the parameters. Presumably use automatic differentiation for first-derivatives.
 Compare the optimized model to the initial ground truth (and pass the test based on a tolerance). Show result in matplotlib.
 """
 
+import sys
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -33,7 +34,7 @@ def create_f(width=10,
     f_dp[mid_ind:mid_ind+ramp_size] = ramp[ramp_start:ramp_end]
     
     """get f' from the Hilbert transform"""
-    _,f_p,_,_,_ = \
+    _,f_p,energy_padded,f_p_padded,f_dp_padded = \
     core_functions.get_f_p(energy, f_dp, padn=padn,
                            trim=trim,
                            )
@@ -42,7 +43,7 @@ def create_f(width=10,
     f_dp = f_dp[trim:len(f_dp)-trim]
     f_p = f_p[trim:len(f_p)-trim]
     
-    return(energy,f_p,f_dp)
+    return(energy_padded,f_p_padded,f_dp_padded)
 
 def sample(f_p,
            f_dp,
@@ -69,9 +70,9 @@ def loss_fn(f_p_opt,
             f_p_noisy_ss,
             f_dp_noisy_ss,
             inds,
-            padn):
+            ):
     data_loss = torch.mean((f_p_opt[inds]-f_p_noisy_ss)**2 + (f_dp_opt[inds]-f_dp_noisy_ss)**2)
-    kk_loss = core_functions_pytorch.penalty(energy, f_p_opt, f_dp_opt, padn=padn)
+    kk_loss = core_functions_pytorch.penalty(energy, f_p_opt, f_dp_opt, padn=0, trim=0)
     
     return(data_loss + kk_loss)
 
@@ -90,15 +91,18 @@ if __name__ == "__main__":
     
     f_p_noisy,f_dp_noisy = sample(f_p,f_dp)
     
+   
     energy_ss,f_p_noisy_ss,f_dp_noisy_ss,inds = subsample(energy,f_p_noisy,f_dp_noisy,
-                                                          spacing=1)
+                                                          spacing=2)
     
     plt.figure()
     plt.plot(energy,f_dp,energy_ss,f_dp_noisy_ss,'.')
     plt.plot(energy,f_p,energy_ss,f_p_noisy_ss,'.')
     plt.xlim([-width,width])
     
-    core_functions_pytorch.penalty(energy, f_p, f_dp, padn=padn)
+    
+    core_functions_pytorch.penalty(energy, f_p, f_dp, padn=0)
+
 
     """From energy_ss,f_p_noisy_ss,f_dp_noisy_ss determine f_p and f_dp, energy is given"""
     
@@ -109,12 +113,12 @@ if __name__ == "__main__":
     f_dp_opt = torch.tensor(f_dp_pred_0, requires_grad=True)
     
     plt.figure()
-    plt.plot(energy,f_dp,energy,f_dp_opt.detach().numpy())
-    plt.plot(energy,f_p,energy,f_p_opt.detach().numpy())
+    plt.plot(energy,f_dp,energy,f_dp_opt.detach().numpy(),'.')
+    plt.plot(energy,f_p,energy,f_p_opt.detach().numpy(),'.')
     plt.xlim([-width,width])
     
-    learning_rate = 1e-2
-    num_iter = 1000
+    learning_rate = 1e-1
+    num_iter = 10000
 
     
     optimizer = torch.optim.SGD([f_p_opt,f_dp_opt],lr=learning_rate)
@@ -124,7 +128,8 @@ if __name__ == "__main__":
                        f_dp_opt,
                        f_p_noisy_ss,
                        f_dp_noisy_ss,
-                       inds, padn)
+                       inds,
+                       )
         if i%100:
             print(loss)
         optimizer.zero_grad()
@@ -132,8 +137,8 @@ if __name__ == "__main__":
         optimizer.step()
         
     plt.figure()
-    plt.plot(energy,f_dp,energy,f_dp_opt.detach().numpy())
-    plt.plot(energy,f_p,energy,f_p_opt.detach().numpy())
+    plt.plot(energy,f_dp,energy,f_dp_opt.detach().numpy(),'.')
+    plt.plot(energy,f_p,energy,f_p_opt.detach().numpy(),'.')
     plt.xlim([-width,width])
     
     
