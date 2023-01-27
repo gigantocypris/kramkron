@@ -1,10 +1,11 @@
 """
-Example use of kramkron API
-The test would simulate f" based on a very simple model of the K-edge.
-Then use the dispersion relations to calculate f′.
-Then sample both of these curves with Gaussian noise to simulate experimental measurement of the two curves.
-Then develop a restraint model, and optimize the parameters. Presumably use automatic differentiation for first-derivatives.
-Compare the optimized model to the initial ground truth (and pass the test based on a tolerance). Show result in matplotlib.
+Example use of kramkron API:
+1. Simulate f" based on a very simple model of the K-edge.
+2. Use the dispersion relations to calculate f′.
+3. Sample both of these curves with Gaussian noise to simulate experimental measurement of the two curves.
+4. Use restraint to optimize the parameters. Use automatic differentiation for first-derivatives.
+5. Compare the optimized model to the initial ground truth. 
+6. Show result in matplotlib.
 """
 
 import sys
@@ -48,7 +49,7 @@ def create_f(width=10,
 def sample(f_p,
            f_dp,
            loc=[0,0],
-           scale=[1e-2,1e-2],
+           scale=[1e-3,1e-3],
            ):
     f_p_dist = torch.distributions.normal.Normal(f_p + loc[0], scale[0])
     f_dp_dist = torch.distributions.normal.Normal(f_dp + loc[1], scale[1])
@@ -65,7 +66,8 @@ def subsample(energy,
     f_dp = f_dp[inds]
     return(energy,f_p,f_dp,inds)
 
-def loss_fn(f_p_opt,
+def loss_fn(energy,
+            f_p_opt,
             f_dp_opt,
             f_p_noisy_ss,
             f_dp_noisy_ss,
@@ -76,30 +78,30 @@ def loss_fn(f_p_opt,
     
     return(data_loss + kk_loss)
 
-
-if __name__ == "__main__":
-
-    width=5
-    padn=100
-    trim=30
+def run_example_opt(width=5,
+                    padn=100,
+                    trim=30,
+                    spacing=5,
+                    noise_loc=[0,0],
+                    noise_scale=[1e-1,1e-1],
+                    learning_rate=1e-1,
+                    num_iter=10000,
+                    ):
+    
     energy,f_p,f_dp = create_f(width=width,
                                padn=padn,
                                trim=trim)
-
     f_p = torch.tensor(f_p)
     f_dp = torch.tensor(f_dp)
     
-    f_p_noisy,f_dp_noisy = sample(f_p,f_dp)
-    
-   
+    f_p_noisy,f_dp_noisy = sample(f_p,f_dp,
+                                  loc=noise_loc,
+                                  scale=noise_scale,
+                                  )
     energy_ss,f_p_noisy_ss,f_dp_noisy_ss,inds = subsample(energy,f_p_noisy,f_dp_noisy,
-                                                          spacing=2)
+                                                          spacing=spacing)
     
-    plt.figure()
-    plt.plot(energy,f_dp,energy_ss,f_dp_noisy_ss,'.')
-    plt.plot(energy,f_p,energy_ss,f_p_noisy_ss,'.')
-    plt.xlim([-width,width])
-    
+
     
     core_functions_pytorch.penalty(energy, f_p, f_dp, padn=0)
 
@@ -112,34 +114,114 @@ if __name__ == "__main__":
     f_p_opt = torch.tensor(f_p_pred_0,requires_grad=True)
     f_dp_opt = torch.tensor(f_dp_pred_0, requires_grad=True)
     
-    plt.figure()
-    plt.plot(energy,f_dp,energy,f_dp_opt.detach().numpy(),'.')
-    plt.plot(energy,f_p,energy,f_p_opt.detach().numpy(),'.')
-    plt.xlim([-width,width])
-    
-    learning_rate = 1e-1
-    num_iter = 10000
 
-    
     optimizer = torch.optim.SGD([f_p_opt,f_dp_opt],lr=learning_rate)
     
+    loss_vec = []
+    actual_loss_vec = []
     for i in range(num_iter):
-        loss = loss_fn(f_p_opt,
+        loss = loss_fn(energy,
+                       f_p_opt,
                        f_dp_opt,
                        f_p_noisy_ss,
                        f_dp_noisy_ss,
                        inds,
                        )
-        if i%100:
-            print(loss)
+        actual_loss = torch.mean((f_p_opt-f_p)**2 + (f_dp_opt-f_dp)**2)
+        loss_vec.append(loss)
+        actual_loss_vec.append(actual_loss)
+        
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
+    return(energy,
+           f_p,
+           f_dp,
+           energy_ss,
+           f_p_noisy_ss,
+           f_dp_noisy_ss,
+           f_p_pred_0,
+           f_dp_pred_0,
+           f_p_opt,
+           f_dp_opt,
+           loss_vec,
+           actual_loss_vec,
+           )
+
+def visualize(energy,
+              f_p,
+              f_dp,
+              energy_ss,
+              f_p_noisy_ss,
+              f_dp_noisy_ss,
+              f_p_pred_0,
+              f_dp_pred_0,
+              f_p_opt,
+              f_dp_opt,
+              loss_vec,
+              actual_loss_vec,
+              ):
+    
     plt.figure()
+    plt.title("Subsampled curves with noise")
+    plt.plot(energy,f_dp,energy_ss,f_dp_noisy_ss,'.')
+    plt.plot(energy,f_p,energy_ss,f_p_noisy_ss,'.')
+    plt.xlim([energy[0],energy[-1]])
+
+
+    plt.figure()
+    plt.title('Initial Guess for actual curves')
+    plt.plot(energy,f_dp,energy,f_dp_pred_0,'.')
+    plt.plot(energy,f_p,energy,f_p_pred_0,'.')
+    plt.xlim([energy[0],energy[-1]])
+     
+    plt.figure()
+    plt.title('Final Guess for actual curves')
     plt.plot(energy,f_dp,energy,f_dp_opt.detach().numpy(),'.')
     plt.plot(energy,f_p,energy,f_p_opt.detach().numpy(),'.')
-    plt.xlim([-width,width])
+    plt.xlim([energy[0],energy[-1]])
     
+    plt.figure()
+    plt.title('Objective Loss')
+    plt.plot([loss.detach().numpy() for loss in loss_vec])
     
+    plt.figure()
+    plt.title('Ground Truth Loss')
+    plt.plot([actual_loss.detach().numpy() for actual_loss in actual_loss_vec])
     
+if __name__ == "__main__":
+    energy,\
+    f_p,\
+    f_dp,\
+    energy_ss,\
+    f_p_noisy_ss,\
+    f_dp_noisy_ss,\
+    f_p_pred_0,\
+    f_dp_pred_0,\
+    f_p_opt,\
+    f_dp_opt,\
+    loss_vec,\
+    actual_loss_vec  = run_example_opt(width=5,
+                                       padn=100,
+                                       trim=30,
+                                       spacing=20,
+                                       noise_loc=[0,0],
+                                       noise_scale=[1e-3,1e-3],
+                                       learning_rate=1e-1,
+                                       num_iter=10000,
+                                       )
+    
+    visualize(energy,
+              f_p,
+              f_dp,
+              energy_ss,
+              f_p_noisy_ss,
+              f_dp_noisy_ss,
+              f_p_pred_0,
+              f_dp_pred_0,
+              f_p_opt,
+              f_dp_opt,
+              loss_vec,
+              actual_loss_vec,
+              )
